@@ -6,7 +6,7 @@ from struct import (
         unpack_from,
         )
 
-install(show_locals=True)
+#install(show_locals=True)
 
 console = Console(markup=False)
 python_print = print
@@ -26,8 +26,42 @@ mode_field_encoding = {
         }
 
 
+effective_address_calculation = [
+        [
+            '[BX + SI]',
+            '[BX + DI]',
+            '[BP + SI]',
+            '[BP + DI]',
+            '[SI]',
+            '[DI]',
+            'DIRECT ADDRESS',
+            '[BX]',
+        ],
+        [
+            '[BX + SI + {d8}]',
+            '[BX + DI + {d8}]',
+            '[BP + SI + {d8}]',
+            '[BP + DI + {d8}]',
+            '[SI + {d8}]',
+            '[DI + {d8}]',
+            '[BP + {d8}]',
+            '[BX + {d8}]',
+        ],
+        [
+            '[BX + SI + {d16}]',
+            '[BX + DI + {d16}]',
+            '[BP + SI + {d16}]',
+            '[BP + DI + {d16}]',
+            '[SI + {d16}]',
+            '[DI + {d16}]',
+            '[BP + {d16}]',
+            '[BX + {d16}]',
+        ],
+        ]
+
+
 def dis(stream, offset):
-    byte1, byte2 = unpack_from('<BB', stream, offset)
+    byte1, *_ = unpack_from('<B', stream, offset)
 
     #print(f';{byte1=:02x} {byte1:08b}')
     #print(f';{byte2=:02x} {byte2:08b}')
@@ -43,12 +77,7 @@ def dis(stream, offset):
     #                      rm 
 
     opcode =    (byte1 >> 2) & 0b111111
-    direction = (byte1 >> 1) & 0b1
-    width =     (byte1 >> 0) & 0b1
 
-    mod = (byte2 >> 6) & 0b111
-    reg = (byte2 >> 3) & 0b111
-    rm  = (byte2 >> 0) & 0b111
 
     #print(f';{opcode=:06b}, {direction=:0b}, {width=:b}')
     #print(f';{mod=:02b}, {reg=:03b}, {rm=:03b}')
@@ -56,16 +85,40 @@ def dis(stream, offset):
     #print(mode_field_encoding[mod])
 
     if opcode == 0b100010: #mov
+        byte2, *_ = unpack_from('<B', stream, offset + 1)
+        mod = (byte2 >> 6) & 0b11
+        reg = (byte2 >> 3) & 0b111
+        rm  = (byte2 >> 0) & 0b111
+
+        direction = (byte1 >> 1) & 0b1
+        width =     (byte1 >> 0) & 0b1
+
         if mod == 0b11:
             r1 = register_field_encoding[width][reg]
             r2 = register_field_encoding[width][rm]
-            print(f'MOV {r2}, {r1}')
-        elif mod == 0b10:
-            assert False
+            print(f'MOV {r1}, {r2}' if direction else f'MOV {r2}, {r1}')
+            return 2
+
+        r1 = register_field_encoding[width][reg]
+        s = effective_address_calculation[mod][rm]
+
+        #print(f';{opcode=:06b}, {direction=:0b}, {width=:b}')
+        #print(f';{mod=:02b}, {reg=:03b}, {rm=:03b}')
+
+        if mod == 0b10:
+            data, *_ = unpack_from('<h', stream, offset+2)
+            s2 = s.format(d16=data).replace(' + 0]', ']')
+            print(f'MOV {r1}, {s2}' if direction else f'MOV {s2}, {r1}')
+            return 4
         elif mod == 0b01:
-            assert False
+            data, *_ = unpack_from('<b', stream, offset+2)
+            s2 = s.format(d8=data).replace(' + 0]', ']')
+            print(f'MOV {r1}, {s2}' if direction else f'MOV {s2}, {r1}')
+            return 3
         else:
-            assert False
+            print(f'MOV {r1}, {s}' if direction else f'MOV {s}, {r1}')
+            return 2
+
     elif (opcode >> 2) == 0b1011:
         width =   (byte1 >> 3) & 0b1
         reg = (byte1 >> 0) & 0b111
