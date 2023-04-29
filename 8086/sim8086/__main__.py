@@ -1,7 +1,16 @@
+from rich.console import Console
+from rich.traceback import install
+
 from sys import argv
 from struct import (
         unpack_from,
         )
+
+install(show_locals=True)
+
+console = Console(markup=False)
+python_print = print
+print = console.print
 
 register_field_encoding = [
         [ 'AL', 'CL', 'DL', 'BL', 'AH', 'CH', 'DH', 'BH'], #  8-bit
@@ -57,7 +66,19 @@ def dis(stream, offset):
             assert False
         else:
             assert False
+    elif (opcode >> 2) == 0b1011:
+        width =   (byte1 >> 3) & 0b1
+        reg = (byte1 >> 0) & 0b111
+        #print(f'{width=} {reg=}')
+        if width:
+            data, *_ = unpack_from('<h', stream, offset+1)
+            r1 = register_field_encoding[width][reg]
+            print(f'MOV {r1}, {data}')
+            return 3
+        else:
+            assert False
     else:
+        print(f';{opcode=:06b}, {direction=:0b}, {width=:b}')
         assert False
 
     return 2
